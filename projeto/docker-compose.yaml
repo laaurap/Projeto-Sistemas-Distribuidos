@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+
+  server1:
+    build: ./server
+    container_name: server1
+    environment:
+      BIND_ADDR: "tcp://*:5555"
+      DB_PATH:   "/data/server1.db"
+    volumes:
+      - server1_data:/data
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import zmq; ctx=zmq.Context(); s=ctx.socket(zmq.REQ); s.connect('tcp://localhost:5555'); ctx.destroy()\" || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
+  server2:
+    build: ./server
+    container_name: server2
+    environment:
+      BIND_ADDR: "tcp://*:5555"
+      DB_PATH:   "/data/server2.db"
+    volumes:
+      - server2_data:/data
+    ports:
+      - "5556:5555"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import zmq; ctx=zmq.Context(); s=ctx.socket(zmq.REQ); s.connect('tcp://localhost:5555'); ctx.destroy()\" || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
+  client1:
+    build: ./client
+    container_name: client1
+    environment:
+      SERVER_ADDR:  "tcp://server1:5555"
+      BOT_NAME:     "bot1"
+      CHANNEL_NAME: "geral"
+    depends_on:
+      server1:
+        condition: service_healthy
+
+  client2:
+    build: ./client
+    container_name: client2
+    environment:
+      SERVER_ADDR:  "tcp://server2:5555"
+      BOT_NAME:     "bot2"
+      CHANNEL_NAME: "noticias"
+    depends_on:
+      server2:
+        condition: service_healthy
+
+volumes:
+  server1_data:
+  server2_data:
