@@ -1,11 +1,11 @@
-# CC7261 – Sistemas Distribuídos — Projeto Parte 1
+# CC7261 – Sistemas Distribuídos
 
 ## Introdução
 
 Este projeto é uma versão simplificada de um sistema de troca de mensagens
 instantâneas inspirado no Bulletin Board System (BBS) e Internet Relay Chat (IRC).
 O sistema permite que usuários (bots) realizem login, criem e listem canais
-de mensagens públicas.
+de mensagens públicas. 
 
 ## Tecnologias utilizadas
 
@@ -98,12 +98,4 @@ projeto/
 └── README.md
 ```
 
-## Erros tratados
 
-| Código                    | Descrição                              |
-|---------------------------|----------------------------------------|
-| `invalid_username`        | Nome vazio ou com caracteres inválidos |
-| `user_already_logged_in`  | Usuário já possui sessão ativa         |
-| `not_logged_in`           | Operação sem login prévio              |
-| `invalid_channel_name`    | Nome de canal inválido                 |
-| `channel_already_exists`  | Canal duplicado                        |
