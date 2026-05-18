@@ -1,7 +1,5 @@
 # CC7261 – Sistemas Distribuídos
 
-# Sistema Distribuído de Mensagens Instantâneas
-
 ## Introdução
 
 Este projeto implementa um sistema distribuído de troca de mensagens inspirado
@@ -9,317 +7,239 @@ em BBS/IRC, utilizando arquitetura cliente-servidor com múltiplos servidores,
 replicação de dados, comunicação assíncrona e sincronização distribuída.
 
 O sistema permite:
-
 - Login de usuários
-- Criação de canais
-- Listagem de canais
-- Publicação de mensagens
+- Criação e listagem de canais
+- Publicação de mensagens em canais
 - Assinatura de canais via Pub/Sub
 - Replicação automática entre servidores
-- Balanceamento de carga
 - Eleição de coordenador
-- Sincronização de relógios
+- Sincronização de relógios físico e lógico
 
 ---
 
-# Tecnologias utilizadas
+## Tecnologias utilizadas
 
-| Componente | Linguagem | Tecnologia |
-|---|---|---|
-| Servidor | Python 3.12 | ZeroMQ + SQLite |
-| Cliente/Bot | Java 17 | ZeroMQ |
-| Proxy Pub/Sub | Python | ZeroMQ XPUB/XSUB |
-| Broker Req/Rep | Python | ZeroMQ |
-| Persistência | SQLite | Banco local |
+| Componente       | Linguagem   | Tecnologia           |
+|------------------|-------------|----------------------|
+| Servidor         | Python 3.12 | ZeroMQ + SQLite      |
+| Cliente/Bot      | Java 17     | ZeroMQ + MessagePack |
+| Proxy Pub/Sub    | Python 3.12 | ZeroMQ XPUB/XSUB     |
+| Serv. Referência | Python 3.12 | ZeroMQ               |
 
 ---
 
-# Arquitetura Geral
+## Arquitetura Geral
 
-```text
-                +-------------------+
-                | Serviço de        |
-                | Referência        |
-                | (Ranks/Heartbeat) |
-                +---------+---------+
-                          |
-                          |
-            +-------------+-------------+
-            |                           |
-            v                           v
-
-      +-----------+             +-----------+
-      | Server 1  |<----------->| Server 2  |
-      +-----------+  Replicação +-----------+
-            ^                           ^
-            |                           |
-            +-------------+-------------+
-                          |
-                    Broker Req/Rep
-                    (Round-Robin)
-                          |
-             +------------+------------+
-             |                         |
-             v                         v
-        +----------+             +----------+
-        | Client 1 |             | Client 2 |
-        +----------+             +----------+
-
-                          |
-                    Proxy Pub/Sub
-                    (XPUB / XSUB)
-                          |
-                 Mensagens em canais
+```
+            +-------------------------+
+            |  Serviço de Referência  |
+            |  (Ranks / Heartbeat)    |
+            +----------+--------------+
+                       |
+           +-----------+-----------+
+           |                       |
+           v                       v
+     +-----------+           +-----------+
+     | Server 1  |<--------->| Server 2  |
+     +-----------+ Replicação+-----------+
+           ^                       ^
+           |                       |
+           +-----------+-----------+
+                       |
+                 Proxy Pub/Sub
+                (XPUB / XSUB)
+                       |
+          +------------+------------+
+          |                         |
+          v                         v
+     +----------+             +----------+
+     | Client 1 |             | Client 2 |
+     +----------+             +----------+
 ```
 
 ---
 
-# Serialização — MessagePack
+## Serialização — MessagePack
 
-Todas as mensagens utilizam serialização binária com MessagePack.
+Todas as mensagens utilizam serialização binária com **MessagePack**.
+Essa escolha foi feita por ser um formato compacto, sem necessidade de
+definir schema, com suporte nativo em Python (`msgpack`) e Java (`msgpack-core`),
+e por ser significativamente mais eficiente que JSON ou XML.
 
-Formato padrão:
-
-```json
-{
-  "type": "publish",
-  "timestamp": 1746650000.0,
-  "logical_clock": 15,
-  "payload": {}
-}
-```
-
-Campos:
-
-| Campo | Descrição |
-|---|---|
-| type | Tipo da mensagem |
-| timestamp | Relógio físico |
-| logical_clock | Relógio lógico de Lamport |
-| payload | Conteúdo específico |
-
----
-
-# Comunicação Req/Rep
+## Comunicação REQ/REP
 
 A comunicação entre clientes e servidores utiliza ZeroMQ no padrão REQ/REP.
 
 Operações implementadas:
 
-- login
-- create_channel
-- list_channels
-- publish
+| Tipo           | Descrição                       |
+|----------------|---------------------------------|
+| login          | Autenticação do bot             |
+| create_channel | Criação de canal                |
+| list_channels  | Listagem de canais disponíveis  |
+| publish        | Publicação de mensagem em canal |
 
 ---
 
-# Broker Req/Rep
+## Proxy Pub/Sub
 
-Foi implementado um broker intermediário responsável pelo balanceamento
-de carga entre os servidores.
+O sistema utiliza um proxy XPUB/XSUB para distribuição de mensagens nos canais.
 
-O broker:
+- Publishers (servidores) conectam em `tcp://proxy:5557`
+- Subscribers (clientes) conectam em `tcp://proxy:5558`
 
-- recebe requisições dos clientes;
-- distribui utilizando round-robin;
-- alterna entre server1 e server2;
-- encaminha a resposta ao cliente.
-
-Isso evita que todos os clientes utilizem sempre o mesmo servidor.
+Isso desacopla publishers e subscribers, permitindo que múltiplos servidores
+publiquem e múltiplos clientes recebam sem conhecimento mútuo.
 
 ---
 
-# Proxy Pub/Sub
+## Persistência — SQLite
 
-O sistema utiliza um proxy XPUB/XSUB para distribuição de mensagens
-dos canais.
+Cada servidor possui seu próprio banco SQLite local, não compartilhado.
 
-- publishers conectam em tcp://proxy:5557
-- subscribers conectam em tcp://proxy:5558
+Tabelas persistidas:
 
-Isso desacopla publishers e subscribers.
+**logins** — username + timestamp do login
 
----
+**channels** — nome, criador e timestamp de criação
 
-# Persistência — SQLite
+**publications** — canal, usuário, mensagem, timestamp de envio,
+timestamp de publicação e relógio lógico
 
-Cada servidor possui seu próprio banco SQLite local.
+## Relógio Lógico de Lamport
 
-Dados persistidos:
-
-## Logins
-- username
-- timestamp
-
-## Canais
-- nome
-- criador
-- timestamp
-
-## Publicações
-- canal
-- usuário
-- mensagem
-- timestamp de envio
-- timestamp de publicação
-- relógio lógico
-
----
-
-# Serviço de Referência
-
-O serviço de referência mantém:
-
-- lista de servidores ativos;
-- ranks únicos;
-- heartbeat;
-- detecção de falha por timeout.
-
-Mensagens implementadas:
-
-- get_rank
-- list_servers
-- heartbeat
-
----
-
-# Relógio Lógico de Lamport
-
-Todas as mensagens trocadas possuem relógio lógico.
+Todas as mensagens trocadas possuem o campo `logical_clock`.
 
 Regras implementadas:
 
-## Envio
+**Envio:**
 ```python
 logical_clock += 1
 ```
 
-## Recebimento
+**Recebimento:**
 ```python
 logical_clock = max(local, recebido) + 1
 ```
 
-Isso garante ordenação lógica parcial dos eventos distribuídos.
+Isso garante ordenação causal parcial dos eventos no sistema distribuído.
+O relógio lógico está presente em todas as mensagens: cliente↔servidor,
+servidor↔servidor e servidor↔referência.
 
 ---
 
-# Eleição de Coordenador
-
-Foi implementado algoritmo de eleição baseado em ranks.
+## Eleição de Coordenador 
 
 Funcionamento:
 
-1. servidores recebem ranks do serviço de referência;
-2. o maior rank possui prioridade;
-3. em caso de falha do coordenador:
-   - inicia-se eleição;
-   - servidores de rank maior assumem;
-   - novo coordenador é publicado via Pub/Sub.
+1. Cada servidor recebe um rank do serviço de referência na inicialização
+2. O servidor com **maior rank** tem prioridade para ser coordenador
+3. Ao iniciar, cada servidor envia mensagem de eleição para servidores com rank maior
+4. Se nenhum responder, o servidor se proclama coordenador
+5. O novo coordenador publica no tópico `servers` via proxy para todos saberem
+
+Em caso de falha do coordenador:
+- O servidor que detectar a falha (timeout na sincronização) inicia nova eleição
+- O processo se repete até um novo coordenador ser eleito
+
+A comunicação entre servidores usa sockets **DEALER/ROUTER** na porta `5560`.
 
 ---
 
-# Sincronização de Relógios — Berkeley
+### Método escolhido
 
-O coordenador fornece horário de referência para os demais servidores.
+Foi implementada **replicação ativa com propagação imediata** (eager replication).
 
-Periodicamente:
+### Como resolve o problema
 
-1. servidor consulta coordenador;
-2. recebe horário atual;
-3. calcula offset local;
-4. ajusta relógio lógico/físico.
+Sem replicação, cada servidor teria apenas uma parte dos dados pois cada
+cliente se conecta a um servidor específico. Com a replicação ativa, toda
+operação importante é imediatamente propagada para todos os outros servidores.
+Assim, todos os servidores possuem todos os dados e a perda de um servidor
+não implica perda de histórico.
 
----
+### Como foi implementado
 
-# Replicação de Dados
+Após salvar localmente um `publish` ou `create_channel`, o servidor dispara
+uma thread em background que:
 
-Foi implementada replicação ativa entre os servidores.
+1. Consulta a lista de servidores ativos no serviço de referência
+2. Para cada servidor diferente de si mesmo, envia a mensagem de replicação
+   via socket DEALER/ROUTER na porta 5560
 
-Como o broker distribui requisições em round-robin, diferentes operações
-podem chegar em servidores distintos.
+O servidor receptor salva o dado localmente apenas se ainda não o possuir
+(verificação de duplicatas antes de inserir).
 
-Para evitar inconsistências, toda operação importante é replicada:
+### Adaptações necessárias
 
-## Replicações implementadas
+A principal adaptação foi reaproveitar o canal de comunicação servidor-servidor
+(porta 5560) já criado para eleição e sincronização de relógio, adicionando
+os novos tipos de mensagem ao handler existente.
 
-- replicate_login
-- replicate_channel
-- replicate_publication
-
-## Funcionamento
-
-1. servidor recebe operação;
-2. salva localmente;
-3. consulta lista de servidores ativos;
-4. envia replicação para os demais servidores.
-
-Assim:
-
-- todos os servidores possuem os mesmos canais;
-- todos os servidores possuem os mesmos logins;
-- todos os servidores possuem todas as mensagens.
+A replicação é feita de forma **assíncrona** (em thread separada) para não
+bloquear a resposta ao cliente. O socket foi alterado de REP/REQ para
+**ROUTER/DEALER** para suportar múltiplas conexões simultâneas sem conflito
+de estado.
 
 ---
 
-# Como executar
+## Como executar
 
-## Pré-requisitos
-
+### Pré-requisitos
 - Docker
 - Docker Compose
 
----
-
-## Subir o sistema
-
+### Subir o sistema
 ```bash
 docker compose up --build
 ```
 
-O sistema iniciará:
-
-- serviço de referência
-- proxy Pub/Sub
-- broker Req/Rep
-- 2 servidores
-- 2 bots clientes
-
----
-
-## Encerrar
-
+### Encerrar
 ```bash
-docker compose down -v
+docker compose down
 ```
 
+### Demonstrar eleição
+
+Para demonstrar a eleição após queda do coordenador:
+
+```bash
+# Terminal 1 — subir tudo
+docker compose up --build
+
+# Terminal 2 — observar server2
+docker compose logs -f server2
+
+# Terminal 3 — verificar quem é o coordenador
+docker compose logs | grep COORDENADOR
+
+# Terminal 3 — parar o coordenador
+docker stop server1
+```
+
+No Terminal 2 será possível observar server2 detectando a falha e
+se elegendo novo coordenador.
+
 ---
 
-# Estrutura do projeto
+## Estrutura do projeto
 
-```text
+```
 projeto/
-├── broker/
-│   ├── broker.py
-│   └── Dockerfile
-│
-├── proxy/
-│   ├── proxy.py
-│   └── Dockerfile
-│
-├── reference/
-│   ├── reference.py
-│   └── Dockerfile
-│
 ├── server/
-│   ├── server.py
+│   ├── server.py            # Servidor Python
 │   └── Dockerfile
-│
 ├── client/
 │   ├── src/main/java/
-│   │   └── BotCliente.java
+│   │   └── BotCliente.java  # Cliente Java
 │   ├── pom.xml
 │   └── Dockerfile
-│
+├── proxy/
+│   ├── proxy.py             # Proxy XSUB/XPUB
+│   └── Dockerfile
+├── reference/
+│   ├── reference.py         # Serviço de referência
+│   └── Dockerfile
 ├── docker-compose.yaml
 └── README.md
 ```
