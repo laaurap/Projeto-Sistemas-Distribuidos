@@ -6,17 +6,6 @@ Este projeto implementa um sistema distribuído de troca de mensagens inspirado
 em BBS/IRC, utilizando arquitetura cliente-servidor com múltiplos servidores,
 replicação de dados, comunicação assíncrona e sincronização distribuída.
 
-O sistema permite:
-- Login de usuários
-- Criação e listagem de canais
-- Publicação de mensagens em canais
-- Assinatura de canais via Pub/Sub
-- Replicação automática entre servidores
-- Eleição de coordenador
-- Sincronização de relógios físico e lógico
-
----
-
 ## Tecnologias utilizadas
 
 | Componente       | Linguagem   | Tecnologia           |
